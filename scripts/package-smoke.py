@@ -64,9 +64,26 @@ with tempfile.TemporaryDirectory(prefix="model-health-smoke-") as directory:
                'exec /usr/bin/env -i ./bin/plugin']
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
 
+    # RPC v5：业务 JSON（配置、参数、结果）不进入控制元数据，而是放在载荷前缀，元数据只记录 data_bytes
+    def data_slot(message):
+        kind = message["type"]
+        if kind == "hello":
+            return message["handshake"], "configuration"
+        if kind in ("call", "callback"):
+            return message, "params"
+        if kind == "result":
+            return message, "result"
+        return None, None
+
     def send(message, payload=b""):
+        message = json.loads(json.dumps(message))
+        holder, key = data_slot(message)
+        data = b""
+        if holder is not None:
+            data = json.dumps(holder.pop(key), separators=(",", ":")).encode()
+            message["data_bytes"] = len(data)
         body = json.dumps(message, separators=(",", ":")).encode()
-        process.stdin.write(struct.pack(">IQ", len(body), len(payload)) + body + payload)
+        process.stdin.write(struct.pack(">IQ", len(body), len(data) + len(payload)) + body + data + payload)
         process.stdin.flush()
 
     def read_exact(length):
@@ -83,7 +100,15 @@ with tempfile.TemporaryDirectory(prefix="model-health-smoke-") as directory:
     def receive():
         meta, payload = struct.unpack(">IQ", read_exact(12))
         assert 0 < meta <= 65536 and payload < 2 * 1024 * 1024
-        return json.loads(read_exact(meta)), read_exact(payload)
+        message = json.loads(read_exact(meta))
+        assert not message.pop("request_context_bytes", 0)
+        data_bytes = message.pop("data_bytes", 0)
+        body = read_exact(payload)
+        holder, key = data_slot(message)
+        assert (holder is not None) == (data_bytes > 0), message
+        if holder is not None:
+            holder[key] = json.loads(body[:data_bytes])
+        return message, body[data_bytes:]
 
     host = {"executions": 0, "state": {}, "callbacks": [], "numeric": False, "http_body": None}
 
@@ -101,7 +126,7 @@ with tempfile.TemporaryDirectory(prefix="model-health-smoke-") as directory:
             url = params["url"]
             pattern = r"https://api\.github\.com/repos/(chen-006/meow-llm-detector|xqy2006/ModelTrace)/(commits\?per_page=1|compare/[0-9a-f]{40}\.\.\.[0-9a-f]{40}\?per_page=1&page=2)"
             assert re.fullmatch(pattern, url), url
-            headers = dict(params["headers"])
+            headers = {name: bytes(value).decode() for name, value in params["headers"]}
             assert set(headers) == {"User-Agent", "Accept", "X-GitHub-Api-Version"}
             assert headers["User-Agent"] == f'codex-model-health/{manifest["version"]}'
             status = 200
@@ -125,7 +150,7 @@ with tempfile.TemporaryDirectory(prefix="model-health-smoke-") as directory:
                     data = [{"sha": source["bundled_commit"] if source["method"] == "meow" else "a" * 40}]
                 body = json.dumps(data).encode()
             host["http_body"] = body
-            return {"status": status, "headers": [], "stream": "github"}, b""
+            return {"status": status, "http_version": "HTTP/1.1", "headers": [], "stream": "github", "trailers": []}, b""
         if method == "host.http.stream_read":
             assert params["stream"] == "github" and not payload
             body = host["http_body"]
@@ -202,7 +227,7 @@ with tempfile.TemporaryDirectory(prefix="model-health-smoke-") as directory:
             send({"type": "result", "id": message["id"], "result": result}, response)
 
     try:
-        send({"type": "hello", "handshake": {"protocol_version": 2, "artifact_sha256": hashlib.sha256(package.read_bytes()).hexdigest(), "plugin_id": "local.model-health", "instance_id": "smoke", "generation": 1, "incarnation": "smoke", "configuration": {}, "contributes": manifest["contributes"]}})
+        send({"type": "hello", "handshake": {"protocol_version": 5, "artifact_sha256": hashlib.sha256(package.read_bytes()).hexdigest(), "plugin_id": "local.model-health", "instance_id": "smoke", "generation": 1, "incarnation": "smoke", "configuration": {}, "contributes": manifest["contributes"]}})
         ready, _ = receive()
         assert ready["type"] == "ready"
         context = {"call_id": 1, "instance_id": "smoke", "generation": 1, "incarnation": "smoke", "stage": "management", "timeout_ms": 120000, "resource_stream": False, "resource_scope_id": "smoke", "request_id": None, "attempt_id": None, "account_id": None, "credential_revision": None}
@@ -310,7 +335,7 @@ with tempfile.TemporaryDirectory(prefix="model-health-smoke-") as directory:
         send({"type": "shutdown"})
         process.wait(timeout=15)
         assert process.returncode == 0, process.stderr.read().decode()
-        print("PACKAGE PASS: hashes=PASS; tmp_noexec=PASS; nonroot=PASS; empty_env=PASS; readonly_root=PASS; sdk_v2=PASS; engine=4.5.4; accounts=1; keys=1; error_http=400; real_model_calls=0")
+        print("PACKAGE PASS: hashes=PASS; tmp_noexec=PASS; nonroot=PASS; empty_env=PASS; readonly_root=PASS; sdk_rpc_v5=PASS; engine=4.5.4; accounts=1; keys=1; error_http=400; real_model_calls=0")
     finally:
         if process.poll() is None:
             subprocess.run(["docker", "rm", "-f", container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)

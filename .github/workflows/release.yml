@@ -1,0 +1,118 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "backend/**"
+      - "frontend/**"
+      - "engine/**"
+      - "scripts/**"
+      - "plugin.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验标签与 plugin.json 版本一致
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(jq -r .version plugin.json)"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "标签 ${GITHUB_REF_NAME} 与 plugin.json 版本 v${version} 不一致" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.10.0
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 读取固定的宿主 SDK 提交
+        id: sdk
+        run: |
+          rev="$(sed -n 's/.*gateway-plugin-sdk = .*rev = "\([0-9a-f]\{40\}\)".*/\1/p' backend/Cargo.toml)"
+          test -n "$rev"
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+
+      - name: 缓存官方打包 CLI
+        id: cli-cache
+        uses: actions/cache@v4
+        with:
+          path: .tools/cpr-cli
+          key: cpr-cli-${{ steps.sdk.outputs.rev }}
+
+      - name: 安装官方打包 CLI（与 SDK 同一提交）
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        run: |
+          cargo install --git https://github.com/zyycn/codex-proxy-rs.git \
+            --rev "${{ steps.sdk.outputs.rev }}" \
+            --locked --root .tools/cpr-cli codex-proxy-plugin-cli
+
+      - name: 前端测试
+        run: |
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend typecheck
+          pnpm --dir frontend test
+
+      - name: 构建、测试并打包
+        env:
+          CPR_PLUGIN_BIN: ${{ github.workspace }}/.tools/cpr-cli/bin/cpr-plugin
+        run: ./scripts/build-linux.sh
+
+      - name: 汇总制品并校验摘要
+        run: |
+          cd dist
+          ls -l
+          for sum in *.sha256; do sha256sum -c "$sum"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-package
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-package
+          path: dist
+
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "${GITHUB_REF_NAME}" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag \
+            $prerelease

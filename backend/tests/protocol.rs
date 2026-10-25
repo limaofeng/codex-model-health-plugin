@@ -118,7 +118,7 @@ impl Peer {
     ) -> Result<Value, PluginFault> {
         let id = self.sequence;
         self.sequence += 2;
-        self.send(Frame{message:Message::Call{id,method:"management.handle".into(),context:CallContext{call_id:id,instance_id:"test".into(),generation:1,incarnation:"test".into(),stage:Stage::Management,timeout_ms:120000,resource_stream:false,resource_scope_id:"scope".into(),request_id:None,attempt_id:None,account_id:None,credential_revision:None},params:json!({"method":if input.is_some(){"POST"}else{"GET"},"path":path,"query":"","content_type":input.as_ref().map(|_|"application/json"),"headers":[]})},payload:input.map(|v|serde_json::to_vec(&v).unwrap()).unwrap_or_default()}).await;
+        self.send(Frame{message:Message::Call{id,method:"management.handle".into(),context:CallContext{call_id:id,instance_id:"test".into(),generation:1,incarnation:"test".into(),stage:Stage::Management,timeout_ms:120000,resource_stream:false,resource_scope_id:"scope".into(),request_id:None,attempt_id:None,account_id:None,credential_revision:None,request:None},params:json!({"method":if input.is_some(){"POST"}else{"GET"},"path":path,"query":"","content_type":input.as_ref().map(|_|"application/json"),"headers":[]})},payload:input.map(|v|serde_json::to_vec(&v).unwrap()).unwrap_or_default()}).await;
         loop {
             let frame = self.receive().await;
             match frame.message {
@@ -217,23 +217,23 @@ impl Host {
                     self.http_body.is_none(),
                     "previous HTTP body was not released"
                 );
-                let headers: Vec<(String, String)> =
+                let headers: Vec<(String, Vec<u8>)> =
                     serde_json::from_value(params["headers"].clone()).unwrap();
                 assert_eq!(headers.len(), 3);
                 assert_eq!(
                     headers[0],
                     (
                         "User-Agent".into(),
-                        format!("codex-model-health/{}", env!("CARGO_PKG_VERSION"))
+                        format!("codex-model-health/{}", env!("CARGO_PKG_VERSION")).into_bytes()
                     )
                 );
                 assert_eq!(
                     headers[1],
-                    ("Accept".into(), "application/vnd.github+json".into())
+                    ("Accept".into(), b"application/vnd.github+json".to_vec())
                 );
                 assert_eq!(
                     headers[2],
-                    ("X-GitHub-Api-Version".into(), "2022-11-28".into())
+                    ("X-GitHub-Api-Version".into(), b"2022-11-28".to_vec())
                 );
                 self.http_requests.push(params);
                 if self.http_failure {
@@ -241,7 +241,7 @@ impl Host {
                 }
                 let (status, body) = self.http.pop_front().expect("unexpected HTTP request");
                 self.http_body = Some(body);
-                metadata(json!({"status":status,"headers":[],"stream":"github"}))
+                metadata(json!({"status":status,"http_version":"HTTP/1.1","headers":[],"stream":"github","trailers":[]}))
             }
             "host.http.stream_read" => {
                 assert!(payload.is_empty());

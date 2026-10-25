@@ -7,7 +7,7 @@ mkdir -p .build/cargo
 docker run --rm --platform linux/amd64 \
   -v "$ROOT:/work" -v "${LINUX_CARGO_CACHE:-$ROOT/.build/cargo}:/cache" \
   -e CARGO_HOME=/cache -e MEOW_ENGINE_BINARY=/work/.build/engine/meow-engine \
-  -e CARGO_TARGET_DIR=/work/.build/linux-target -w /work rust:1.97-slim-bookworm \
+  -e CARGO_TARGET_DIR=/work/.build/linux-target -w /work rust:1.99-slim-bookworm \
   sh -c 'cargo test --locked --features bundled-engine --manifest-path backend/Cargo.toml && cargo build --locked --release --features bundled-engine --manifest-path backend/Cargo.toml'
 pnpm --dir frontend install --frozen-lockfile
 pnpm --dir frontend build

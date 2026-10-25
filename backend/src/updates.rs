@@ -143,10 +143,12 @@ async fn github<T: serde::de::DeserializeOwned>(
                 headers: vec![
                     (
                         "User-Agent".into(),
-                        concat!("codex-model-health/", env!("CARGO_PKG_VERSION")).into(),
+                        concat!("codex-model-health/", env!("CARGO_PKG_VERSION"))
+                            .as_bytes()
+                            .to_vec(),
                     ),
-                    ("Accept".into(), "application/vnd.github+json".into()),
-                    ("X-GitHub-Api-Version".into(), "2022-11-28".into()),
+                    ("Accept".into(), b"application/vnd.github+json".to_vec()),
+                    ("X-GitHub-Api-Version".into(), b"2022-11-28".to_vec()),
                 ],
             },
             vec![],
