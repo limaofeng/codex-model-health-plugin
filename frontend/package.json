@@ -1,5 +1,5 @@
 {
-  "name":"codex-model-health-frontend", "private":true, "type":"module", "version":"0.3.0",
+  "name":"codex-model-health-frontend", "private":true, "type":"module", "version":"0.3.1",
   "engines":{"node":">=24"},
   "scripts":{"dev":"vite --host 127.0.0.1","typecheck":"vue-tsc -b --pretty false","build":"vue-tsc -b && vite build","test":"node --test tests/*.test.mjs"},
   "dependencies":{"@codex-proxy/ui":"github:zyycn/codex-proxy-ui#v0.6.1","@lucide/vue":"^1.47.0","@vueuse/core":"^15.0.0","vue":"^3.5.43"},
