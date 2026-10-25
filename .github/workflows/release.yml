@@ -53,6 +53,12 @@ jobs:
           test -n "$rev"
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
 
+      - name: 安装 Rust 1.99.1（SDK 与打包 CLI 的最低版本）
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          rustc --version
+
       - name: 缓存官方打包 CLI
         id: cli-cache
         uses: actions/cache@v4
