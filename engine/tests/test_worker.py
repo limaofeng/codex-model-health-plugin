@@ -77,5 +77,23 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(original["valid_samples"], len(plan["jobs"]))
 
 
+
+class FailureReportTests(unittest.TestCase):
+    def test_key_error_reports_missing_key_without_values(self):
+        try:
+            worker.handle({"op": "payload", "job_id": "j"})
+        except Exception as exc:
+            self.assertEqual(worker.failure(exc).split(":")[0], "KeyError")
+            self.assertIn("'", worker.failure(exc))
+
+    def test_known_errors_keep_their_code(self):
+        class Coded(Exception):
+            code = "baseline_changed"
+        self.assertEqual(worker.failure(Coded()), "baseline_changed")
+
+    def test_other_errors_report_only_the_class_name(self):
+        self.assertEqual(worker.failure(ValueError("secret answer text")), "ValueError")
+
+
 if __name__ == "__main__":
     unittest.main()

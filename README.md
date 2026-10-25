@@ -2,7 +2,7 @@
 
 为 [Codex Proxy RS](https://github.com/zyycn/codex-proxy-rs) 提供独立的账号模型体检页面：选择已有账号与计量 Key，通过原生代理和请求链路运行 **Meow / ModelTrace** 两种行为指纹检测，无需再次填写 API 地址或密钥，也不修改主项目。
 
-[下载 v0.3.1](https://github.com/R-lmmortal/codex-model-health-plugin/releases/tag/v0.3.1) · [反馈问题](https://github.com/R-lmmortal/codex-model-health-plugin/issues) · [插件使用规范](https://github.com/zyycn/codex-proxy-rs/blob/main/docs/plugins.md)
+[下载 v0.3.2](https://github.com/R-lmmortal/codex-model-health-plugin/releases/tag/v0.3.2) · [反馈问题](https://github.com/R-lmmortal/codex-model-health-plugin/issues) · [插件使用规范](https://github.com/zyycn/codex-proxy-rs/blob/main/docs/plugins.md)
 
 ![插件页面（模拟数据，不代表真实检测结果）](docs/screenshots/overview.png)
 
@@ -23,7 +23,7 @@
 
 | 项目 | 当前支持 |
 | --- | --- |
-| 插件 ID / 版本 | `local.model-health` / `0.3.1` |
+| 插件 ID / 版本 | `local.model-health` / `0.3.2` |
 | 宿主清单范围 | `>=3.31.0, <4.0.0`；离线协议测试与打包验证基于 SDK v3.31.1（RPC 协议 5、`management` 能力 v2），其他版本需另验 |
 | Release 平台 | Linux x86_64，glibc 2.36+（如 Debian 12）；不适用于 ARM64、Alpine/musl 或 Windows |
 | 运行方式 | `trustedProcess`，插件以宿主系统身份运行，安装代表完整信任；不是操作系统沙箱 |
@@ -33,16 +33,16 @@
 
 ```text
 仓库：R-lmmortal/codex-model-health-plugin
-版本标签：v0.3.1（或留空查询最新稳定版）
+版本标签：v0.3.2（或留空查询最新稳定版）
 ```
 
-选择 `local.model-health-0.3.1-x86_64-unknown-linux-gnu.tar.gz`，核对平台与摘要后安装并启用。也可从 [Releases](https://github.com/R-lmmortal/codex-model-health-plugin/releases) 下载该文件，通过“上传包”安装。请不要上传 GitHub 自动生成的 **Source code (zip/tar.gz)**，它们是源码而不是插件制品。
+选择 `local.model-health-0.3.2-x86_64-unknown-linux-gnu.tar.gz`，核对平台与摘要后安装并启用。也可从 [Releases](https://github.com/R-lmmortal/codex-model-health-plugin/releases) 下载该文件，通过“上传包”安装。请不要上传 GitHub 自动生成的 **Source code (zip/tar.gz)**，它们是源码而不是插件制品。
 
 Release 同时提供同名 `.tar.gz.sha256`；下载两个附件后可校验：
 
 ```sh
-sha256sum -c local.model-health-0.3.1-x86_64-unknown-linux-gnu.tar.gz.sha256
-# macOS：shasum -a 256 -c local.model-health-0.3.1-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum -c local.model-health-0.3.2-x86_64-unknown-linux-gnu.tar.gz.sha256
+# macOS：shasum -a 256 -c local.model-health-0.3.2-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
 保留 `local.model-health` 是为了让原先本地安装的版本继续沿用同一插件身份与历史，不是更换发布账号。仓库与发布者主页为 [R-lmmortal](https://github.com/R-lmmortal)。已有本地安装可在插件详情设置 GitHub 更新来源，或上传新版后确认切换；不要为了更新而删除原配置或私有数据。
@@ -85,6 +85,8 @@ Meow 报告给出行为匹配、行为偏移或证据不足。ModelTrace 报告�
 - 历史报告保留检测方法、基线版本和内容哈希，不因表单切换或后续基线更新重新计算。缺少方法字段的旧记录按 Meow 读取和续测，不改变原来的账号身份校验。
 - 主服务的模型映射、提示词或中间件可能影响实际响应，因此报告描述的是当前配置链路的行为，不把它解释成纯模型能力证明。
 - Linux 安装包内含 Rust 插件及 Python/NumPy 检测引擎，不要求服务器另装 Python。引擎在宿主分配的插件实例目录内创建权限 0700 的工作目录，并将子进程的 `TMPDIR` 指向这里；支持非 root、空环境、只读根目录及 `/tmp:noexec`。宿主回收实例目录时会清理残留文件；不是 Alpine/musl 包。
+- 检测引擎按需启动，空闲 2 分钟后正常退出并释放约 25 MB 常驻内存，下一次检测自动重启；超时或异常的引擎会被结束，并在下次启动前清理其遗留的解压目录。插件启动时也会清理同一目录下已退出实例遗留的引擎目录。
+- 引擎遇到意外错误时，页面会显示异常类型（`KeyError` 会带上缺失的键名），完整堆栈输出到插件 stderr，由宿主写入日志；堆栈不会进入检测报告或历史。
 
 ## 构建与验证
 

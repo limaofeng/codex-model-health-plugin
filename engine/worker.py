@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import traceback
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -135,6 +136,19 @@ def handle(data):
     raise AppError("unknown_operation")
 
 
+def failure(exc):
+    """返回给宿主的错误码；意外异常保留堆栈到 stderr，并为 KeyError 带上缺失的键名。"""
+    code = getattr(exc, "code", None)
+    if code is not None:
+        return code
+    if sys.exc_info()[0] is not None:
+        traceback.print_exc(file=sys.stderr)
+    sys.stderr.flush()
+    if isinstance(exc, KeyError):
+        return f"KeyError: {exc.args[0]!r}"[:96] if exc.args else "KeyError"
+    return type(exc).__name__
+
+
 def main():
     while line := sys.stdin.buffer.readline(MAX_LINE + 1):
         if len(line) > MAX_LINE:
@@ -142,7 +156,7 @@ def main():
         try:
             result = {"ok": True, "data": handle(json.loads(line))}
         except (AppError, RequestError, KeyError, TypeError, ValueError) as exc:
-            result = {"ok": False, "error": getattr(exc, "code", type(exc).__name__)}
+            result = {"ok": False, "error": failure(exc)}
         print(json.dumps(result, ensure_ascii=False, allow_nan=False, separators=(",", ":")), flush=True)
 
 

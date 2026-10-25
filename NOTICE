@@ -1,4 +1,4 @@
-账号模型体检 / Codex Proxy Model Health 0.3.1
+账号模型体检 / Codex Proxy Model Health 0.3.2
 
 This plugin integrates unchanged Meow LLM Detector source from commit
 0f31d4a96c9e953277ab8e337d3dbd3ec57b316e (engine 4.5.4; baseline 4.5.3-predictive.2).
